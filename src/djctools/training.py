@@ -84,7 +84,7 @@ class Trainer:
       (e.g., lists of dictionaries or tuples). It can be used with both standard PyTorch data loaders 
       and custom data iterators.
     """
-    def __init__(self, model, optimizer, num_gpus=1, device_ids=None, verbose_level=0):
+    def __init__(self, model, optimizer, num_gpus=1, device_ids=None, verbose_level=0, drop_last_batch=False):
         
         # Initialize distributed process group
         self.num_gpus = num_gpus
@@ -122,6 +122,7 @@ class Trainer:
         self.model_replicas = make_replicas(model, self.devices)
         self.optimizer = optimizer
         self.verbose_level = verbose_level
+        self.drop_last_batch = drop_last_batch
 
 
     def save_model(self, filepath):
@@ -221,10 +222,19 @@ class Trainer:
         batch_idx = 0
         has_cuda = torch.cuda.is_available()
 
+        batches = self.create_batches(data_iterator)
+
         while True:
-            batches = self.create_batches(data_iterator)
+
             if not batches:
                 break  # End of epoch
+            
+            next_batches = self.create_batches(data_iterator)
+            #if next batch is empty the current batch will be the last one 
+            if self.drop_last_batch and not next_batches:
+                print(f"Skipping remainder batch at batch_idx {batch_idx}.")
+                break
+            
 
             info = train_step_threaded(self.model_replicas, self.optimizer, batches, self.devices, check_sync=False, has_cuda = has_cuda)
             flush_all_plotting(self.model_replicas[0])
@@ -237,6 +247,8 @@ class Trainer:
                 print(f'Batch {batch_idx}: Loss {loss}')
             batch_idx += 1
             wandb_wrapper.flush()
+
+            batches = next_batches
 
     def val_loop(self, val_loader):
         """
