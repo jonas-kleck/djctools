@@ -232,12 +232,14 @@ class Trainer:
         batches = self.create_batches(data_iterator)
 
         while True:
-            if (len(batches)< len(self.devices)) and self.drop_last_batch:
-                print(f"Skipping remainder batch at batch_idx {batch_idx}.")
-                break  # End of epoch
-            next_batches = self.create_batches(data_iterator)
-            if not next_batches:
+            if not batches:
                 break
+            if (len(batches)< len(self.devices)):
+                break 
+            next_batches = self.create_batches(data_iterator)
+            if not next_batches and self.drop_last_batch:
+                break
+            
 
             batches = self.send_batches_to_device(batches)
             
@@ -271,7 +273,11 @@ class Trainer:
             while True:
                 batches = self.create_batches(data_iterator)
                 if not batches:
+                    break
+                if (len(batches)< len(self.devices)):
                     break  # End of epoch
+
+                batches = self.send_batches_to_device(batches)
                 
                 info = val_step_threaded(self.model_replicas, batches, self.devices)
                 flush_all_plotting(self.model_replicas[0])
@@ -321,3 +327,5 @@ class Trainer:
                 model._modules[name] = None
         
         return model
+
+
