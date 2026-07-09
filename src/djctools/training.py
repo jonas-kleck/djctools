@@ -201,10 +201,18 @@ class Trainer:
         for d in self.devices:
             try:
                 data = next(data_iterator)
-                data = self._data_to_device(data, d)
+                #data = self._data_to_device(data, d)
                 batches.append(data)
+                
             except StopIteration:
-                return []  # End of data
+                return batches  # End of data
+        return batches
+    
+    def send_batches_to_device(self, data):
+        batches = []
+        for i, batch in enumerate(data):
+            batch = self._data_to_device(batch, self.devices[i])
+            batches.append(batch)
         return batches
 
     def train_loop(self, train_loader):
@@ -221,21 +229,18 @@ class Trainer:
         data_iterator = iter(train_loader)
         batch_idx = 0
         has_cuda = torch.cuda.is_available()
-
         batches = self.create_batches(data_iterator)
 
         while True:
-
-            if not batches:
-                break  # End of epoch
-            
-            next_batches = self.create_batches(data_iterator)
-            #if next batch is empty the current batch will be the last one 
-            if self.drop_last_batch and not next_batches:
+            if (len(batches)< len(self.devices)) and self.drop_last_batch:
                 print(f"Skipping remainder batch at batch_idx {batch_idx}.")
+                break  # End of epoch
+            next_batches = self.create_batches(data_iterator)
+            if not next_batches:
                 break
-            
 
+            batches = self.send_batches_to_device(batches)
+            
             info = train_step_threaded(self.model_replicas, self.optimizer, batches, self.devices, check_sync=False, has_cuda = has_cuda)
             flush_all_plotting(self.model_replicas[0])
             self.train_batch_callback(self.model_replicas[0], batch_idx, batches)
@@ -247,8 +252,8 @@ class Trainer:
                 print(f'Batch {batch_idx}: Loss {loss}')
             batch_idx += 1
             wandb_wrapper.flush()
-
             batches = next_batches
+            
 
     def val_loop(self, val_loader):
         """
