@@ -227,7 +227,7 @@ class Trainer:
 
         self.optimizer.zero_grad()  # Zero gradients before starting the epoch
         data_iterator = iter(train_loader)
-        batch_idx = 0
+        self.train_batch_idx = 0
         has_cuda = torch.cuda.is_available()
         batches = self.create_batches(data_iterator)
 
@@ -245,14 +245,14 @@ class Trainer:
             
             info = train_step_threaded(self.model_replicas, self.optimizer, batches, self.devices, check_sync=False, has_cuda = has_cuda)
             flush_all_plotting(self.model_replicas[0])
-            self.train_batch_callback(self.model_replicas[0], batch_idx, batches)
+            self.train_batch_callback(self.model_replicas[0], self.train_batch_idx, batches)
 
             loss = sum([i.loss_value for i in info if i.loss_value is not None])#ok, they have been scaled for this to work before
             # Logging and printing
             wandb_wrapper.log("total_loss", loss)
-            if self.verbose_level > 0 and batch_idx % 10 == 0:
-                print(f'Batch {batch_idx}: Loss {loss}')
-            batch_idx += 1
+            if self.verbose_level > 0 and self.train_batch_idx % 10 == 0:
+                print(f'Batch {self.train_batch_idx}: Loss {loss}')
+            self.train_batch_idx += 1
             wandb_wrapper.flush()
             batches = next_batches
             
@@ -267,7 +267,7 @@ class Trainer:
         for r in self.model_replicas:
             r.eval()  # Set all replicas to evaluation mode
         data_iterator = iter(val_loader)
-        batch_idx = 0
+        self.val_batch_idx = 0
 
         with torch.no_grad():
             while True:
@@ -281,14 +281,14 @@ class Trainer:
                 
                 info = val_step_threaded(self.model_replicas, batches, self.devices)
                 flush_all_plotting(self.model_replicas[0])
-                self.val_batch_callback(self.model_replicas[0], batch_idx, batches)
+                self.val_batch_callback(self.model_replicas[0], self.val_batch_idx, batches)
                 loss = sum([i.loss_value for i in info if i.loss_value is not None]) #ok, they have been scaled for this to work before
     
                 # Logging and printing
                 wandb_wrapper.log("total_loss", loss)
-                if self.verbose_level > 0 and batch_idx % 10 == 0:
-                    print(f'Validation Batch {batch_idx}: Loss {loss}')
-                batch_idx += 1
+                if self.verbose_level > 0 and self.val_batch_idx % 10 == 0:
+                    print(f'Validation Batch {self.val_batch_idx}: Loss {loss}')
+                self.val_batch_idx += 1
                 wandb_wrapper.flush(prefix="val_")
 
 
